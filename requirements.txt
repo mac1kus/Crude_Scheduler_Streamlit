@@ -4,3 +4,8 @@ openpyxl
 xlrd
 requests
 numpy==1.24.3
+streamlit
+pandas
+plotly
+python-dotenv
+    

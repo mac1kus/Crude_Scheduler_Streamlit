@@ -13,8 +13,10 @@ COPY . /app
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose Flask port
-EXPOSE 5000
+# Expose Flask port AND Streamlit port
+EXPOSE 5000 8501
 
-# Start the Flask app using Gunicorn
+# Note: The CMD line below is now ONLY the default build command 
+# if not overridden by render.yaml. Render will use the commands 
+# specified in render.yaml for each service.
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]

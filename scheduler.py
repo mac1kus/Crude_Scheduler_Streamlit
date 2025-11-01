@@ -1440,10 +1440,20 @@ class Simulator:
                   summary_path="daily_summary.csv",
                   cargo_path="cargo_report.csv",
                   inventory_path="inventory_data.csv"):
-        # Get Downloads folder path
-        # Use environment variable for downloads folder (defaults to ~/Downloads for local, set to /tmp in Render)
-        downloads_folder = os.environ.get("DOWNLOADS_FOLDER", os.path.join(os.path.expanduser("~"), "Downloads"))
-      
+        
+        # --- START MODIFIED BLOCK (A): FIXED PATH SETUP ---
+        # 1. Define fixed output directory relative to the project root
+        output_folder = os.path.expanduser("~/Downloads")
+        os.makedirs(output_folder, exist_ok=True) # Ensure the directory exists
+        
+        # 2. Define fixed file paths (no timestamp)
+        log_path = os.path.join(output_folder, "simulation_log.csv")
+        summary_path = os.path.join(output_folder, "daily_summary.csv")
+        cargo_path = os.path.join(output_folder, "cargo_report.csv")
+        inventory_path = os.path.join(output_folder, "inventory_data.csv")
+        snapshot_path = os.path.join(output_folder, "tank_snapshots.csv")
+        
+        # --- END MODIFIED BLOCK (A) ---
         
         if self.infeasible:
             print(f"\n{'='*60}")
@@ -1458,13 +1468,7 @@ class Simulator:
             print(f"{'='*60}\n")
             return
         
-        # Add timestamp to filenames
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_path = os.path.join(downloads_folder, f"simulation_log_{timestamp}.csv")
-        summary_path = os.path.join(downloads_folder, f"daily_summary_{timestamp}.csv")
-        cargo_path = os.path.join(downloads_folder, f"cargo_report_{timestamp}.csv")
-        inventory_path = os.path.join(downloads_folder, f"inventory_data_{timestamp}.csv")
-        snapshot_path = os.path.join(downloads_folder, f"tank_snapshots_{timestamp}.csv")
+        # Snapshot log (uses 'w' mode, ensuring overwrite)
         if hasattr(self, 'snapshot_log') and self.snapshot_log:
             with open(snapshot_path, "w", newline="", encoding="utf-8") as f:
                 fieldnames = ['Timestamp'] + [f'Tank{i}' for i in range(1, self.N + 1)] + [f'State{i}' for i in range(1, self.N + 1)]
@@ -1472,11 +1476,10 @@ class Simulator:
                 writer.writeheader()
                 writer.writerows(self.snapshot_log)
         
-        # Event log with tank status columns
+        # Event log
         fieldnames = ["Timestamp", "Level", "Event", "Tank", "Cargo", "Message"]
         fieldnames += [f"Tank{i}" for i in range(1, self.N + 1)]
 
-        # Sort log chronologically before saving
         self._sort_log_chronologically()
         
         with open(log_path, "w", newline="", encoding="utf-8") as f:
@@ -1484,7 +1487,7 @@ class Simulator:
             writer.writeheader()
             writer.writerows(self.daily_log_rows)
         
-        # Daily summary with tank status columns
+        # Daily summary
         summary_fields = ["Date", "Opening Stock (bbl)", "cert stk", "uncert stk", "Processing (bbl)", 
                          "Closing Stock (bbl)", "Ready Tanks", "Empty Tanks"]
         summary_fields += [f"Tank{i}" for i in range(1, self.N + 1)]
@@ -1494,13 +1497,17 @@ class Simulator:
             writer.writeheader()
             writer.writerows(self.daily_summary_rows)
         
-        # Cargo report with enhanced columns
+        # Cargo report
         self.generate_cargo_report()
         if self.cargo_report_rows:
             with open(cargo_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=list(self.cargo_report_rows[0].keys()))
                 writer.writeheader()
                 writer.writerows(self.cargo_report_rows)
+
+       
+
+        # NOTE: The subsequent _convert_to_excel_with_autofit method will also use these fixed paths.
         
 #         # Inventory data for chart
 #         with open(inventory_path, "w", newline="", encoding="utf-8") as f:
