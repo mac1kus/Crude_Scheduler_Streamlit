@@ -1,0 +1,25 @@
+services:
+  # 1. The Flask App (Your Backend)
+  - type: web
+    name: crude-sim-backend  # You can change this name
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0 # Or your Python version
+      - key: APP_USERNAME
+        value: admin # Set your desired username
+      - key: APP_PASSWORD
+        value: admin123 # Set your desired password
+      # IMPORTANT: Add any other secret keys here
+
+  # 2. The Streamlit App (Your Frontend)
+  - type: web
+    name: crude-sim-frontend # You can change this name
+    env: python
+    buildCommand: "pip install -r requirements.txt" # Assumes Streamlit is in the same file
+    startCommand: "streamlit run streamlit_app.py --server.port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0 # Or your Python version
