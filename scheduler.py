@@ -1504,8 +1504,8 @@ class Simulator:
                 writer = csv.DictWriter(f, fieldnames=list(self.cargo_report_rows[0].keys()))
                 writer.writeheader()
                 writer.writerows(self.cargo_report_rows)
+        
 
-       
 
         # NOTE: The subsequent _convert_to_excel_with_autofit method will also use these fixed paths.
         

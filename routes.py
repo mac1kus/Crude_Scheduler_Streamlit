@@ -7,6 +7,7 @@ import copy
 from solver import optimize_crude_mix_schedule
 from collections import defaultdict
 import re
+import pandas as pd
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -14,6 +15,7 @@ from openpyxl.utils import get_column_letter
 
 # Import the Simulator class from your scheduler script
 from scheduler import Simulator
+SUMMARY_FILE_PATH = "/tmp/daily_summary.csv"
 
 # --- User Authentication ---
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
@@ -1429,6 +1431,18 @@ def register_routes(app):
             sim.generate_cargo_report()
             sim.daily_log_rows.sort(key=lambda x: datetime.strptime(x["Timestamp"], "%d/%m/%Y %H:%M"))
             sim.save_csvs()
+            # --- START NEW CODE FOR STREAMLIT ---
+            # Save the daily summary to a fixed path for Streamlit to access
+            try:
+                if sim.daily_summary_rows:
+                    summary_df = pd.DataFrame(sim.daily_summary_rows)
+                    summary_df.to_csv(SUMMARY_FILE_PATH, index=False)
+                    print(f"File for Streamlit saved to {SUMMARY_FILE_PATH}")
+                else:
+                    print("No daily_summary_rows to save for Streamlit.")
+            except Exception as e:
+                print(f"Error saving Streamlit file: {e}")
+            # --- END NEW CODE FOR STREAMLIT ---
             
             # Get ALL CSV files created by save_csvs() - using broader pattern
             import glob
@@ -1757,6 +1771,23 @@ def register_routes(app):
             return jsonify({'error': f'Failed to export solver report: {str(e)}'}), 500
     
     # routes.py (NEW /download/<filename> endpoint using send_from_directory)
+
+    @app.route('/api/get_results', methods=['GET'])
+    def get_simulation_results():
+        """
+        NEW endpoint for Streamlit. 
+        It sends the file from the fixed path and does NOT delete it.
+        """
+        if not os.path.exists(SUMMARY_FILE_PATH):
+            return jsonify({"error": "File not found. Please run the simulation first."}), 404
+        
+        # This sends the file from the Flask app's disk
+        return send_file(
+            SUMMARY_FILE_PATH,
+            mimetype='text/csv',
+            download_name='daily_summary.csv',
+            as_attachment=True
+        )
 
     @app.route("/download/<filename>")
     def download_file(filename):

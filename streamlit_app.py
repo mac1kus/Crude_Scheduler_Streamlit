@@ -6,6 +6,10 @@ from datetime import datetime, timedelta
 import os
 import re
 import math
+import requests
+
+FLASK_APP_URL = "http://127.0.0.1:5000"
+
 
 # Try to import Excel support libraries
 try:
@@ -75,162 +79,130 @@ def safe_read_csv(filepath, **kwargs):
         st.error(f"Failed to read {os.path.basename(filepath)}: {e}")
         return None
 
-def load_data(folder_path):
-    """Load simulation data from CSV and Excel files"""
-    import time
-    time.sleep(0.1)  # Small delay to ensure file is fully written
+d# --- START NEW load_data FUNCTION ---
+def load_data():
+    """
+    Load simulation data by downloading directly from the LOCAL Flask service
+    and reading it into memory.
+    """
+    
+    # --- THIS IS THE CRITICAL CHANGE ---
+    # Use the local Flask app address and port (must match your app.py)
+    FLASK_APP_URL = "http://127.0.0.1:5000" 
+    
+    st.info(f"Connecting to Flask server at {FLASK_APP_URL}...")
+
+    # Define the endpoints we need
+    # We will fetch 'daily_summary' from the new '/api/get_results'
+    # We will fetch the others from the '/download/' route
+    endpoints = {
+        'summary_df': f"{FLASK_APP_URL}/api/get_results", 
+        'log_df': f"{FLASK_APP_URL}/download/simulation_log.csv",
+        'cargo_df': f"{FLASK_APP_URL}/download/cargo_report.csv",
+        'snapshot_df': f"{FLASK_APP_URL}/download/tank_snapshots.csv"
+    }
+    
+    dataframes = {}
     crude_mix = {}
     processing_rate_html = None
-    try:
-        files = os.listdir(folder_path)
-    except Exception as e:
-        st.error(f"Cannot access folder: {e}")
-        return None, None, None, None, {}, None
     
-    # Get FIXED filename files (no timestamp)
-    log_files = [f for f in files if f == 'simulation_log.csv']
-    summary_files = [f for f in files if f == 'daily_summary.csv']
-    cargo_files = [f for f in files if f == 'cargo_report.csv']
-    snapshot_files = [f for f in files if f == 'tank_snapshots.csv']
-    
-    if not log_files:
-        st.warning("No simulation log files found. Looking for alternative data sources...")
-        # If no log files but snapshot files exist, we can still show tank volumes
-        if not snapshot_files:
-            return None, None, None, None, {}, None
-    
-    # Get most recent files
-    log_file = sorted(log_files)[-1] if log_files else None
-    summary_file = sorted(summary_files)[-1] if summary_files else None
-    cargo_file = sorted(cargo_files)[-1] if cargo_files else None
-    snapshot_file = sorted(snapshot_files)[-1] if snapshot_files else None
-    
-    # Load log data
-    log_df = None
-    if log_file:
-        log_df = safe_read_csv(os.path.join(folder_path, log_file))
-        if log_df is not None:
-            try:
-                log_df['Timestamp'] = pd.to_datetime(log_df['Timestamp'], format='%d/%m/%Y %H:%M', dayfirst=True)
-            except Exception:
-                try:
-                    log_df['Timestamp'] = pd.to_datetime(log_df['Timestamp'], format='%d/%m/%Y %H:%M', dayfirst=True, errors='coerce')
-                except Exception as e:
-                    st.error(f"Timestamp parsing error: {e}")
+    # Loop through and try to download each file
+    for df_name, url in endpoints.items():
+        try:
+            response = requests.get(url)
             
-            # Sort log_df chronologically by timestamp
-            if 'Timestamp' in log_df.columns:
-                log_df = log_df.sort_values('Timestamp', ascending=True).reset_index(drop=True)
-            
-            # Parse processing rate from SIM_START event
-            sim_start = log_df[log_df['Event'] == 'SIM_START']
-            if not sim_start.empty:
-                message = sim_start.iloc[0]['Message']
-                import re
-                rate_match = re.search(r'processing rate:\s*([\d,]+)', str(message))
-                if rate_match:
-                    try:
-                        processing_rate_html = float(rate_match.group(1).replace(',', ''))
-                    except:
-                        pass
-            
-            # Parse crude mix from READY_1 events
-            ready_events = log_df[log_df['Event'] == 'READY_1']
-            if not ready_events.empty:
-                # Get the first READY_1 message which has the mix
-                message = ready_events.iloc[0]['Message']
+            if response.status_code == 200:
+                # Read the CSV content from the response
+                csv_data = response.content.decode('utf-8')
                 
-                # Parse: "Tank X now READY - Mix: [Crude1: 50.0%, Crude2: 25.0%]"
-                import re
-                match = re.search(r'Mix: \[(.*?)\]', str(message))
-                if match:
-                    mix_str = match.group(1)
-                    # Split by commas and parse each crude
-                    for item in mix_str.split(','):
-                        item = item.strip()
-                        # Parse "Crude Name: 50.0%"
-                        parts = item.split(':')
-                        if len(parts) == 2:
-                            crude_name = parts[0].strip()
-                            percentage_str = parts[1].strip().replace('%', '')
-                            try:
-                                crude_mix[crude_name] = float(percentage_str)
-                            except:
-                                pass
-                    
-                    if crude_mix:
-                        st.success(f"✅ Loaded crude mix from simulation log: {len(crude_mix)} crude types")
+                # Use io.StringIO to turn the text string into a file-like object
+                # that pandas can read
+                dataframes[df_name] = pd.read_csv(io.StringIO(csv_data))
+                st.success(f"Successfully loaded {df_name}")
+            else:
+                st.warning(f"Could not load {df_name}. Server responded with {response.status_code}.")
+                dataframes[df_name] = None
+                
+        except requests.exceptions.RequestException as e:
+            st.error(f"Failed to connect to Flask app for {df_name} at {url}. Is the Flask app running?")
+            dataframes[df_name] = None
     
-    # Load summary data
-    summary_df = None
-    if summary_file:
-        summary_df = safe_read_csv(os.path.join(folder_path, summary_file))
-        if summary_df is not None:
+    # Assign to the variables your app expects
+    log_df = dataframes.get('log_df')
+    summary_df = dataframes.get('summary_df')
+    cargo_df = dataframes.get('cargo_df')
+    snapshot_df = dataframes.get('snapshot_df')
+    
+    # --- (The rest of this is your original processing logic) ---
+    
+    if log_df is not None:
+        try:
+            log_df['Timestamp'] = pd.to_datetime(log_df['Timestamp'], format='%d/%m/%Y %H:%M', dayfirst=True)
+        except Exception:
             try:
-                summary_df['Date'] = pd.to_datetime(summary_df['Date'], format='%d/%m/%Y', errors='coerce')
-            except Exception:
+                log_df['Timestamp'] = pd.to_datetime(log_df['Timestamp'], format='%d/%m/%Y %H:%M', dayfirst=True, errors='coerce')
+            except Exception as e:
+                st.error(f"Timestamp parsing error: {e}")
+        
+        if 'Timestamp' in log_df.columns:
+            log_df = log_df.sort_values('Timestamp', ascending=True).reset_index(drop=True)
+        
+        sim_start = log_df[log_df['Event'] == 'SIM_START']
+        if not sim_start.empty:
+            message = sim_start.iloc[0]['Message']
+            import re
+            rate_match = re.search(r'processing rate:\s*([\d,]+)', str(message))
+            if rate_match:
                 try:
-                    summary_df['Date'] = pd.to_datetime(summary_df['Date'], errors='coerce')
-                except Exception:
+                    processing_rate_html = float(rate_match.group(1).replace(',', ''))
+                except:
                     pass
-    
-    # Load cargo data
-    cargo_df = None
-    if cargo_file:
-        cargo_df = safe_read_csv(os.path.join(folder_path, cargo_file))
-    
-    # Load snapshot data (supports both CSV and Excel) - HORIZONTAL FORMAT
-    snapshot_df = None
-    if snapshot_file:
-        file_path = os.path.join(folder_path, snapshot_file)
         
-        # Check if it's an Excel file
-        if snapshot_file.endswith(('.xlsx', '.xls')):
-            try:
-                # Try reading Excel file
-                if EXCEL_SUPPORT:
-                    snapshot_df = pd.read_excel(file_path, engine='openpyxl' if snapshot_file.endswith('.xlsx') else None)
-                else:
-                    # Try to install openpyxl on the fly
-                    import subprocess
-                    import sys
-                    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'openpyxl'])
-                    import openpyxl
-                    snapshot_df = pd.read_excel(file_path, engine='openpyxl')
+        ready_events = log_df[log_df['Event'] == 'READY_1']
+        if not ready_events.empty:
+            message = ready_events.iloc[0]['Message']
+            import re
+            match = re.search(r'Mix: \[(.*?)\]', str(message))
+            if match:
+                mix_str = match.group(1)
+                for item in mix_str.split(','):
+                    item = item.strip()
+                    parts = item.split(':')
+                    if len(parts) == 2:
+                        crude_name = parts[0].strip()
+                        percentage_str = parts[1].strip().replace('%', '')
+                        try:
+                            crude_mix[crude_name] = float(percentage_str)
+                        except:
+                            pass
                 
-                st.success(f"✅ Loaded snapshot data from Excel: {snapshot_file}")
-            except Exception as e:
-                st.error(f"Error reading Excel snapshot file: {e}")
-                st.info("Try saving the Excel file as CSV format for better compatibility.")
-        else:
-            # It's a CSV file
-            snapshot_df = safe_read_csv(file_path)
-            if snapshot_df is not None:
-                st.success(f"✅ Loaded snapshot data from CSV: {snapshot_file}")
-        
-        # IMPORTANT: Detect horizontal format
-        if snapshot_df is not None:
-            # Horizontal format detection:
-            # First column should be timestamp
-            # Subsequent columns are tank data (volumes then statuses)
-            first_col = snapshot_df.columns[0]
+                if crude_mix:
+                    st.success(f"✅ Loaded crude mix from simulation log: {len(crude_mix)} crude types")
+
+    if summary_df is not None:
+        try:
+            summary_df['Date'] = pd.to_datetime(summary_df['Date'], format='%d/%m/%Y', errors='coerce')
+        except Exception:
+            try:
+                summary_df['Date'] = pd.to_datetime(summary_df['Date'], errors='coerce')
+            except Exception:
+                pass
+
+    if snapshot_df is not None:
+        first_col = snapshot_df.columns[0]
+        try:
+            timestamps = pd.to_datetime(snapshot_df[first_col], format='%d/%m/%Y %H:%M', errors='coerce')
+            if timestamps.isna().all():
+                timestamps = pd.to_datetime(snapshot_df[first_col], errors='coerce')
             
-            try:
-                # Try to parse first column as datetime
-                timestamps = pd.to_datetime(snapshot_df[first_col], format='%d/%m/%Y %H:%M', errors='coerce')
-                if timestamps.isna().all():
-                    timestamps = pd.to_datetime(snapshot_df[first_col], errors='coerce')
-                
-                if timestamps.notna().sum() > 0:
-                    st.info(f"📊 Detected HORIZONTAL snapshot format: {len(snapshot_df)} time points, {len(snapshot_df.columns)-1} data columns")
-                    # Store parsed timestamps
-                    snapshot_df['_Timestamp'] = timestamps
-            except Exception as e:
-                st.warning(f"Could not parse timestamps from first column: {e}")
-    
-    # Load crude mix from simulation log READY_1 events
-    
+            if timestamps.notna().sum() > 0:
+                st.info(f"📊 Detected HORIZONTAL snapshot format: {len(snapshot_df)} time points, {len(snapshot_df.columns)-1} data columns")
+                snapshot_df['_Timestamp'] = timestamps
+        except Exception as e:
+            st.warning(f"Could not parse timestamps from first column: {e}")
+
     return log_df, summary_df, cargo_df, snapshot_df, crude_mix, processing_rate_html
+# --- END NEW load_data FUNCTION ---
 
 def detect_number_of_tanks(log_df, snapshot_df):
     """Dynamically detect the number of tanks from log and snapshot data"""
@@ -545,34 +517,14 @@ def main():
     # Sidebar
     with st.sidebar:
         st.header("📁 Data Source")
-        folder_path = st.text_input("Data Folder Path", 
-                                   value=os.path.expanduser("~/Downloads"),
-                                   help="Enter the path to folder containing simulation files")
+        st.info("Data is loaded directly from the Flask app.")
         
         if st.button("🔄 Reload Data", type="primary", use_container_width=True):
             st.rerun()
         
         st.markdown("---")
-        st.header("📊 Data Files Status")
-        
-        # Show which files are available
-        if os.path.exists(folder_path):
-            files = os.listdir(folder_path)
-            log_found = any(f.startswith('simulation_log_') for f in files)
-            snapshot_found = any('snapshot' in f.lower() for f in files)
-            
-            if log_found:
-                st.success("✅ Log file found")
-            else:
-                st.warning("⚠️ No log file")
-                
-            if snapshot_found:
-                st.success("✅ Snapshot file found")
-            else:
-                st.warning("⚠️ No snapshot file")
-    
     # Load data
-    log_df, summary_df, cargo_df, snapshot_df, crude_mix, processing_rate_html = load_data(folder_path)
+    log_df, summary_df, cargo_df, snapshot_df, crude_mix, processing_rate_html = load_data()
     
     # Processing rate configuration - after loading data
     with st.sidebar:
@@ -828,6 +780,8 @@ def main():
         else:
             st.warning("No crude mix data found in simulation log READY_1 events.")
     
+    # streamlit_app.py (REPLACEMENT for lines 657-737)
+
     tab_idx += 1
     
     # Events Log tab
@@ -835,47 +789,50 @@ def main():
         if log_df is not None and not log_df.empty:
             st.subheader("All Events")
             
-            # --- START FIX ---
+            # --- START FIX: Correct sorting and full log search ---
             
-            # 1. Take the last 500 events (log_df is already sorted by datetime in load_data)
-            # We use .copy() to avoid any SettingWithCopyWarning
-            filtered_log = log_df.tail(500).copy()
+            # 1. Create a copy of the full log_df.
+            # (log_df is already sorted by a true datetime in the load_data function)
+            display_df = log_df.copy()
             
             # 2. Search functionality
             col1, col2 = st.columns([3, 1])
             with col1:
-                search = st.text_input("🔍 Search events", "", placeholder="Type to filter events...")
+                search = st.text_input("🔍 Search events", "", placeholder="Type to filter all events...")
             with col2:
                 show_all = st.checkbox("Show all columns", value=False)
             
             if search:
-                # 3. Apply search mask *before* formatting timestamp
-                mask = pd.Series([False] * len(filtered_log))
-                for col in filtered_log.columns:
-                    if col == 'Timestamp': # Skip search on the datetime object itself
+                # 3. Apply search mask to the ENTIRE log (before formatting timestamp)
+                mask = pd.Series([False] * len(display_df))
+                for col in display_df.columns:
+                    if col == 'Timestamp': # Skip search on the datetime object
                         continue
-                    if filtered_log[col].dtype == 'object':
-                        mask |= filtered_log[col].str.contains(search, case=False, na=False)
+                    if display_df[col].dtype == 'object':
+                        mask |= display_df[col].str.contains(search, case=False, na=False)
                     else:
                         # Convert other columns (like numbers) to string to search
-                        mask |= filtered_log[col].astype(str).str.contains(search, case=False, na=False)
-                filtered_log = filtered_log[mask]
-            
-            # 4. Determine which columns to display
-            if show_all:
-                display_cols = list(filtered_log.columns)
+                        mask |= display_df[col].astype(str).str.contains(search, case=False, na=False)
+                display_df = display_df[mask]
             else:
-                # Show only the most relevant columns
-                possible_cols = ['Timestamp', 'Level', 'Event', 'Tank', 'Cargo', 'Message']
-                display_cols = [col for col in possible_cols if col in filtered_log.columns]
+                # 4. If NOT searching, *then* limit the view to the last 1000 lines for performance.
+                #    (You can change 1000 to whatever limit you want, or remove it to show all)
+                display_df = display_df.tail(1000)
             
-            # 5. Format timestamp to string *after* all sorting/filtering is done
-            if 'Timestamp' in filtered_log.columns:
-                filtered_log['Timestamp'] = filtered_log['Timestamp'].dt.strftime('%d/%m/%Y %H:%M')
+            # 5. Determine which columns to display
+            if show_all:
+                display_cols = list(display_df.columns)
+            else:
+                possible_cols = ['Timestamp', 'Level', 'Event', 'Tank', 'Cargo', 'Message']
+                display_cols = [col for col in possible_cols if col in display_df.columns]
+            
+            # 6. Format timestamp to string *AFTER* all sorting/filtering is done
+            if 'Timestamp' in display_df.columns:
+                display_df['Timestamp'] = display_df['Timestamp'].dt.strftime('%d/%m/%Y %H:%M')
             
             # --- END FIX ---
             
-            if not filtered_log.empty:
+            if not display_df.empty:
                 st.markdown("""
                 <style>
                     .dataframe {
@@ -888,12 +845,13 @@ def main():
                 </style>
                 """, unsafe_allow_html=True)
                 
-                # 6. Display the DataFrame *without* re-sorting it
+                # 7. Display the DataFrame. It is already sorted.
+                #    DO NOT call .sort_values() here.
                 st.dataframe(
-                    filtered_log[display_cols].reset_index(drop=True), # REMOVED .sort_values()
+                    display_df[display_cols].reset_index(drop=True), # This is now chronologically correct
                     width='stretch',
                     height=400,
-                    hide_index=True # Changed from False to True for cleaner display
+                    hide_index=True
                 )
             else:
                 st.info("No events found matching your criteria")
