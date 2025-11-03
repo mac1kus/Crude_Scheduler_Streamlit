@@ -262,34 +262,12 @@ def detect_number_of_tanks(log_df, snapshot_df):
     # Return detected tanks (no default fallback)
     return max_tank
 
-def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=None):
-    """Get tank status at specific timestamp - READS FROM HORIZONTAL SNAPSHOT FORMAT"""
-    # Auto-detect number of tanks if not specified
-    if num_tanks is None:
-        num_tanks = detect_number_of_tanks(log_df, snapshot_df)
-    
+def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=16):
+    """Get tank status at specific timestamp - READS FROM SNAPSHOT"""
     tank_status = {}
     
-    # Method 1: Try to get status from log_df
-    if log_df is not None and not log_df.empty:
-        filtered = log_df[log_df['Timestamp'] <= timestamp].copy()
-        if not filtered.empty:
-            latest_row = filtered.iloc[-1]
-            
-            # Dynamically find all tank columns in the data
-            tank_cols = [col for col in latest_row.index if col.startswith('Tank') and not col.endswith('_Volume')]
-            
-            for col in tank_cols:
-                tank_num_str = col[4:].replace('_Status', '')
-                if tank_num_str.isdigit():
-                    tank_id = int(tank_num_str)
-                    status = latest_row[col]
-                    if pd.notna(status) and isinstance(status, str):
-                        tank_status[tank_id] = status.strip().upper()
-    
-    # Method 2: Read from HORIZONTAL snapshot format
+    # Read from snapshot_df
     if snapshot_df is not None and not snapshot_df.empty and '_Timestamp' in snapshot_df.columns:
-        # Filter to correct timestamp
         matched_rows = snapshot_df[snapshot_df['_Timestamp'] <= timestamp]
         
         if matched_rows.empty:
@@ -297,53 +275,46 @@ def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=None):
         else:
             latest_snapshot = matched_rows.iloc[-1]
         
-        # In horizontal format: columns after volumes contain status values
-        # We need to figure out where volumes end and statuses begin
-        
-        # Count numeric columns (volumes) first
-        volume_end_idx = 1  # Start after timestamp column
+        # Count volume columns first
+        volume_count = 0
         for i in range(1, len(snapshot_df.columns)):
-            col_name = snapshot_df.columns[i]
-            if col_name == '_Timestamp':
+            if snapshot_df.columns[i] == '_Timestamp':
                 continue
-            value = latest_snapshot[col_name]
-            
+            value = latest_snapshot[snapshot_df.columns[i]]
             if pd.notna(value):
                 try:
                     float(str(value).replace(',', ''))
-                    volume_end_idx = i + 1
+                    volume_count += 1
                 except:
                     break
         
-        # Now read status values
-        status_start_idx = volume_end_idx
-        tank_id = 1
+        # Status columns start after volume columns
+        status_start_idx = 1 + volume_count
         
-        for i in range(status_start_idx, len(snapshot_df.columns)):
-            col_name = snapshot_df.columns[i]
-            if col_name == '_Timestamp':
-                continue
+        # Read status values
+        for tank_id in range(1, num_tanks + 1):
+            status_col_idx = status_start_idx + (tank_id - 1)
             
-            value = latest_snapshot[col_name]
-            
-            if pd.notna(value):
-                value_str = str(value).strip().upper()
+            if status_col_idx < len(snapshot_df.columns):
+                col_name = snapshot_df.columns[status_col_idx]
+                if col_name == '_Timestamp':
+                    continue
                 
-                # Check if it's a valid status
-                if value_str in ['FILLING', 'EMPTY', 'READY', 'FEEDING', 'SUSPENDED', 
-                                'SETTLED', 'LAB', 'FILLED', 'SETTLING', 'MAINTENANCE', 'CLEANING']:
-                    tank_status[tank_id] = value_str
-                    tank_id += 1
+                value = latest_snapshot[col_name]
+                
+                if pd.notna(value):
+                    value_str = str(value).strip().upper()
+                    valid_statuses = ['FILLING', 'EMPTY', 'READY', 'FEEDING', 'SUSPENDED', 
+                                    'SETTLED', 'LAB', 'FILLED', 'SETTLING']
+                    if value_str in valid_statuses:
+                        tank_status[tank_id] = value_str
     
-    # Fill in any missing tanks up to num_tanks
+    # Fill missing tanks
     for i in range(1, num_tanks + 1):
         if i not in tank_status:
             tank_status[i] = 'READY'
     
-    # Update num_tanks if we detected more
-    actual_num_tanks = max(max(tank_status.keys()) if tank_status else 0, num_tanks)
-    
-    return tank_status, actual_num_tanks
+    return tank_status
 
 def get_tank_volume(snapshot_df, timestamp, tank_id):
     """Get tank volume from snapshots - HANDLES HORIZONTAL FORMAT"""
