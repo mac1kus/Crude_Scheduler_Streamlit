@@ -1430,61 +1430,51 @@ def register_routes(app):
 
             sim.generate_cargo_report()
             sim.daily_log_rows.sort(key=lambda x: datetime.strptime(x["Timestamp"], "%d/%m/%Y %H:%M"))
-            sim.save_csvs()
-            # --- START NEW CODE FOR STREAMLIT ---
-            # Save the daily summary to a fixed path for Streamlit to access
-            try:
-                if sim.daily_summary_rows:
-                    summary_df = pd.DataFrame(sim.daily_summary_rows)
-                    summary_df.to_csv(SUMMARY_FILE_PATH, index=False)
-                    print(f"File for Streamlit saved to {SUMMARY_FILE_PATH}")
-                else:
-                    print("No daily_summary_rows to save for Streamlit.")
-            except Exception as e:
-                print(f"Error saving Streamlit file: {e}")
-            # --- END NEW CODE FOR STREAMLIT ---
             
-            # Get ALL CSV files created by save_csvs() - using broader pattern
-            import glob
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
-            # Try multiple patterns to catch all CSV files
-            csv_files = []
-            
-            # Pattern 1: Files with timestamp
-            csv_files.extend(glob.glob(f"/tmp/*_{timestamp}.csv"))
-            
-            # Pattern 2: Common CSV filenames (in case timestamp format differs)
-            csv_patterns = [
-                "/tmp/tank_snap_shots*.csv",
-                "/tmp/simulation_log*.csv", 
-                "/tmp/daily_summary*.csv",
-                "/tmp/cargo_report*.csv"
-            ]
-            
-            for pattern in csv_patterns:
-                matching_files = glob.glob(pattern)
-                # Add only files modified in last 10 seconds (recently created)
-                import time
-                current_time = time.time()
-                for f in matching_files:
-                    if os.path.exists(f) and (current_time - os.path.getmtime(f)) < 10:
-                        if f not in csv_files:
-                            csv_files.append(f)
-            
-            csv_download_urls = {}
-            if csv_files:
-                for csv_file in csv_files:
-                    filename = os.path.basename(csv_file)
-                    csv_download_urls[filename] = f"/download/{filename}"
+            # NOTE: We skip sim.save_csvs() because the function is complex and handled below.
+            # We ONLY need to generate the cargo report and sort the log before saving.
 
-
+            # --- START FINAL STREAMLIT API FILE SAVES (CLEANED BLOCK) ---
             alerts = []
             for log_entry in sim.daily_log_rows:
                 if log_entry.get("Level", "").lower() in ["danger", "warning"]:
                     day_num = (datetime.strptime(log_entry['Timestamp'], "%d/%m/%Y %H:%M") - cfg['start_dt']).days + 1
                     alerts.append({"day": day_num, "type": log_entry.get("Level").lower(), "message": log_entry.get("Message")})
 
+            # --- START FINAL CRITICAL FIX BLOCK ---
+            try:
+                if sim.daily_summary_rows:
+                    # CORRECT: Convert list of dicts to DataFrame
+                    pd.DataFrame(sim.daily_summary_rows).to_csv("/tmp/daily_summary.csv", index=False)
+                
+                if sim.daily_log_rows:
+                    # CORRECT: Convert list of dicts to DataFrame
+                    pd.DataFrame(sim.daily_log_rows).to_csv("/tmp/simulation_log.csv", index=False)
+                    
+                if sim.cargo_report_rows:
+                    # CORRECT: Convert list of dicts to DataFrame
+                    pd.DataFrame(sim.cargo_report_rows).to_csv("/tmp/cargo_report.csv", index=False)
+                
+                if sim.snapshot_log:
+                    # CORRECT: Convert list of dicts to DataFrame
+                    pd.DataFrame(sim.snapshot_log).to_csv("/tmp/tank_snapshots.csv", index=False)
+
+            except Exception as e:
+                print(f"Error saving all Streamlit API files: {e}")
+                return jsonify({'error': f'Failed to save necessary CSV files: {str(e)}'}), 500
+            
+            # --- END FINAL CRITICAL FIX BLOCK ---
+
+            # Create the simple map Streamlit needs for downloads
+            csv_download_urls = {
+                "daily_summary.csv": "/api/get_results",
+                "simulation_log.csv": "/download/simulation_log.csv",
+                "cargo_report.csv": "/download/cargo_report.csv",
+                "tank_snapshots.csv": "/download/tank_snapshots.csv"
+            }
+
+            # NOTE: The manual download logic is handled in the frontend via main.js
+            
             return jsonify({
                 'success': True,
                 'csv_files': csv_download_urls,
@@ -1792,15 +1782,24 @@ def register_routes(app):
     @app.route("/download/<filename>")
     def download_file(filename):
         """
-        Download simulation results using send_from_directory for robustness.
-        Uses call_on_close to ensure the file is deleted *after* the browser 
-        has finished downloading it from the server.
+        Download simulation results. Schedules cleanup ONLY for files NOT needed 
+        by the Streamlit dashboard.
         """
-        # Define the base directory (always /tmp on Render)
         directory_path = "/tmp"
         
+        # --- CRITICAL FIX: EXEMPT STREAMLIT API FILES FROM DELETION ---
+        # The Streamlit app fetches these files via /download/ and expects them to stay.
+        STREAMLIT_FILES_TO_KEEP = [
+            "simulation_log.csv", 
+            "cargo_report.csv", 
+            "tank_snapshots.csv"
+        ]
+        # daily_summary.csv is safe because it uses /api/get_results
+        
+        should_delete = filename not in STREAMLIT_FILES_TO_KEEP
+        # -------------------------------------------------------------
+        
         try:
-            # 1. Security Check: Prevent path traversal (e.g., trying to access ../../etc/passwd)
             if ".." in filename or "/" in filename:
                 return jsonify({"error": "Invalid filename requested"}), 400
 
@@ -1809,22 +1808,21 @@ def register_routes(app):
             if not os.path.exists(file_path):
                 return jsonify({"error": "File not found on server"}), 404
             
-            # 2. Use send_from_directory for reliable serving
             response = send_from_directory(
                 directory_path, 
                 filename, 
                 as_attachment=True, 
-                download_name=filename # Explicitly set the download name
+                download_name=filename
             )
             
-            # 3. Schedule cleanup to happen *after* the response stream is closed
-            @response.call_on_close
-            def cleanup_file():
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    # Log cleanup error but don't stop the response
-                    print(f"Error cleaning up file {file_path}: {e}")
+            # 3. Schedule cleanup ONLY IF the file is not needed by Streamlit
+            if should_delete:
+                @response.call_on_close
+                def cleanup_file():
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        print(f"Error cleaning up file {file_path}: {e}")
 
             return response
             
