@@ -542,25 +542,16 @@ def main():
         
         st.markdown("---")
         
-        # Display data timestamp from filename
+        # Logic for displaying data load timestamp in sidebar
         if log_df is not None and not log_df.empty:
-            # Parse timestamp from filename (format: simulation_log_YYYYMMDD_HHMMSS.csv)
             try:
-                log_files = [f for f in os.listdir(folder_path) if f.startswith('simulation_log_') and f.endswith('.csv')]
-                if log_files:
-                    latest_file = sorted(log_files)[-1]
-                    # Extract timestamp from filename
-                    timestamp_str = latest_file.replace('simulation_log_', '').replace('.csv', '')
-                    # Parse format: YYYYMMDD_HHMMSS
-                    file_timestamp = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
-                    st.success(f"📅 Data loaded: {file_timestamp.strftime('%d/%m/%Y %H:%M:%S')}")
-            except:
-                # Fallback to log data timestamp
                 latest_timestamp = log_df['Timestamp'].max()
                 st.success(f"📅 Data loaded: {latest_timestamp.strftime('%d/%m/%Y %H:%M')}")
+            except Exception as e:
+                st.warning(f"Failed to parse latest timestamp: {e}")
     
     if log_df is None and snapshot_df is None:
-        st.error("❌ No data files found. Please check the folder path.")
+        st.error("❌ No data files found. Please run the simulation on the main app first.")
         return
     
     # Initialize session state for selected time
