@@ -1780,54 +1780,71 @@ def register_routes(app):
         )
 
     @app.route("/download/<filename>")
-    def download_file(filename):
-        """
-        Download simulation results. Schedules cleanup ONLY for files NOT needed 
-        by the Streamlit dashboard.
-        """
-        directory_path = "/tmp"
+def download_file(filename):
+    """
+    Download simulation results. Never deletes Streamlit dashboard files.
+    """
+    directory_path = "/tmp"
+    
+    # --- CRITICAL: Files that Streamlit needs must NEVER be deleted ---
+    STREAMLIT_FILES_TO_KEEP = [
+        "simulation_log.csv", 
+        "cargo_report.csv", 
+        "tank_snapshots.csv",  # ← This is the file having issues
+        "daily_summary.csv"    # ← Added for safety
+    ]
+    
+    try:
+        # Security check
+        if ".." in filename or "/" in filename:
+            print(f"[SECURITY] Invalid filename requested: {filename}")
+            return jsonify({"error": "Invalid filename requested"}), 400
+
+        file_path = os.path.join(directory_path, filename)
         
-        # --- CRITICAL FIX: EXEMPT STREAMLIT API FILES FROM DELETION ---
-        # The Streamlit app fetches these files via /download/ and expects them to stay.
-        STREAMLIT_FILES_TO_KEEP = [
-            "simulation_log.csv", 
-            "cargo_report.csv", 
-            "tank_snapshots.csv"
-        ]
-        # daily_summary.csv is safe because it uses /api/get_results
+        # Debug logging
+        print(f"[DEBUG] Download request for: {filename}")
+        print(f"[DEBUG] Full path: {file_path}")
+        print(f"[DEBUG] File exists: {os.path.exists(file_path)}")
         
+        if os.path.exists(file_path):
+            # Check file size and modification time
+            file_size = os.path.getsize(file_path)
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+            print(f"[DEBUG] File size: {file_size} bytes")
+            print(f"[DEBUG] Last modified: {file_mtime}")
+
+        if not os.path.exists(file_path):
+            print(f"[ERROR] File not found: {file_path}")
+            return jsonify({"error": "File not found on server"}), 404
+        
+        # NEVER delete Streamlit files
         should_delete = filename not in STREAMLIT_FILES_TO_KEEP
-        # -------------------------------------------------------------
         
-        try:
-            if ".." in filename or "/" in filename:
-                return jsonify({"error": "Invalid filename requested"}), 400
+        response = send_from_directory(
+            directory_path, 
+            filename, 
+            as_attachment=True, 
+            download_name=filename
+        )
+        
+        # Only schedule cleanup for non-Streamlit files
+        if should_delete:
+            print(f"[INFO] Will delete {filename} after sending")
+            @response.call_on_close
+            def cleanup_file():
+                try:
+                    os.remove(file_path)
+                    print(f"[CLEANUP] Deleted {file_path}")
+                except Exception as e:
+                    print(f"[CLEANUP ERROR] Failed to delete {file_path}: {e}")
+        else:
+            print(f"[INFO] Keeping {filename} (Streamlit dashboard file)")
 
-            file_path = os.path.join(directory_path, filename)
-
-            if not os.path.exists(file_path):
-                return jsonify({"error": "File not found on server"}), 404
-            
-            response = send_from_directory(
-                directory_path, 
-                filename, 
-                as_attachment=True, 
-                download_name=filename
-            )
-            
-            # 3. Schedule cleanup ONLY IF the file is not needed by Streamlit
-            if should_delete:
-                @response.call_on_close
-                def cleanup_file():
-                    try:
-                        os.remove(file_path)
-                    except Exception as e:
-                        print(f"Error cleaning up file {file_path}: {e}")
-
-            return response
-            
-        except Exception as e:
-            print(f"Error in download_file: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({"error": "An unexpected error occurred during file transfer."}), 500
+        return response
+        
+    except Exception as e:
+        print(f"[ERROR] Exception in download_file: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "An unexpected error occurred during file transfer."}), 500
