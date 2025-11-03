@@ -439,7 +439,7 @@ class Simulator:
                     continue
                 
                 # PURE RANDOM CHOICE - NO CONSTRAINTS
-                import random
+              
                 cargo_type = random.choice(available_types)
                 
                 # Schedule the selected cargo type
