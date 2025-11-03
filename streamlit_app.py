@@ -79,7 +79,7 @@ def safe_read_csv(filepath, **kwargs):
         st.error(f"Failed to read {os.path.basename(filepath)}: {e}")
         return None
 
-d# --- START NEW load_data FUNCTION ---
+# --- START NEW load_data FUNCTION ---
 def load_data():
     """
     Load simulation data by downloading directly from the LOCAL Flask service
