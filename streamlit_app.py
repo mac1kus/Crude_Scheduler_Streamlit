@@ -83,19 +83,13 @@ def safe_read_csv(filepath, **kwargs):
 # --- START NEW load_data FUNCTION ---
 def load_data():
     """
-    Load simulation data by downloading directly from the LOCAL Flask service
+    Load simulation data by downloading directly from the Flask service
     and reading it into memory.
     """
     
-    # --- THIS IS THE CRITICAL CHANGE ---
-    # Use the local Flask app address and port (must match your app.py)
-    
-    
+    print(f"[DEBUG] Connecting to Flask server at {FLASK_APP_URL}...")
     st.info(f"Connecting to Flask server at {FLASK_APP_URL}...")
 
-    # Define the endpoints we need
-    # We will fetch 'daily_summary' from the new '/api/get_results'
-    # We will fetch the others from the '/download/' route
     endpoints = {
         'summary_df': f"{FLASK_APP_URL}/api/get_results", 
         'log_df': f"{FLASK_APP_URL}/download/simulation_log.csv",
@@ -107,25 +101,38 @@ def load_data():
     crude_mix = {}
     processing_rate_html = None
     
-    # Loop through and try to download each file
     for df_name, url in endpoints.items():
         try:
-            response = requests.get(url)
+            print(f"[DEBUG] Fetching {df_name} from {url}...")
+            st.info(f"Fetching {df_name}...")
+            
+            response = requests.get(url, timeout=10)
+            print(f"[DEBUG] {df_name} status code: {response.status_code}")
             
             if response.status_code == 200:
-                # Read the CSV content from the response
-                csv_data = response.content.decode('utf-8')
+                content_type = response.headers.get('Content-Type', '')
+                print(f"[DEBUG] {df_name} Content-Type: {content_type}")
                 
-                # Use io.StringIO to turn the text string into a file-like object
-                # that pandas can read
+                if 'excel' in content_type.lower() or 'spreadsheet' in content_type.lower():
+                    print(f"[WARNING] Ignoring Excel file for {df_name}")
+                    st.warning(f"❌ Ignoring Excel file for {df_name}. Expected CSV only.")
+                    dataframes[df_name] = None
+                    continue
+                
+                csv_data = response.content.decode('utf-8')
                 dataframes[df_name] = pd.read_csv(io.StringIO(csv_data))
-                st.success(f"Successfully loaded {df_name}")
+                
+                row_count = len(dataframes[df_name])
+                print(f"[SUCCESS] Loaded {df_name}: {row_count} rows")
+                st.success(f"✅ Successfully loaded {df_name} ({row_count} rows)")
             else:
+                print(f"[ERROR] Could not load {df_name}. Status: {response.status_code}")
                 st.warning(f"Could not load {df_name}. Server responded with {response.status_code}.")
                 dataframes[df_name] = None
                 
         except requests.exceptions.RequestException as e:
-            st.error(f"Failed to connect to Flask app for {df_name} at {url}. Is the Flask app running?")
+            print(f"[ERROR] Failed to connect for {df_name}: {e}")
+            st.error(f"Failed to connect to Flask app for {df_name}")
             dataframes[df_name] = None
     
     # Assign to the variables your app expects
