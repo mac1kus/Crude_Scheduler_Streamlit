@@ -7,6 +7,7 @@ import os
 import re
 import math
 import requests
+import io
 
 FLASK_APP_URL = "https://crude-sim-backend.onrender.com"
 
@@ -560,8 +561,6 @@ def main():
     
     if log_df is None and snapshot_df is None:
         st.error("❌ No data files found. Please check the folder path.")
-        st.info(f"Looking in: {folder_path}")
-        st.info("Expected files: simulation_log_*.csv or *snapshot*.csv/xlsx")
         return
     
     # Initialize session state for selected time

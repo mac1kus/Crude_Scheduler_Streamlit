@@ -1443,7 +1443,7 @@ class Simulator:
         
         # --- START MODIFIED BLOCK (A): FIXED PATH SETUP ---
         # 1. Define fixed output directory relative to the project root
-        output_folder = os.path.expanduser("~/Downloads")
+        output_folder = "/tmp"
         os.makedirs(output_folder, exist_ok=True) # Ensure the directory exists
         
         # 2. Define fixed file paths (no timestamp)
