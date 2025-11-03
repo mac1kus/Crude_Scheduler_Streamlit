@@ -262,11 +262,14 @@ def detect_number_of_tanks(log_df, snapshot_df):
     # Return detected tanks (no default fallback)
     return max_tank
 
-def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=16):
-    """Get tank status at specific timestamp - READS FROM SNAPSHOT"""
+def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=14):
+    """
+    Get tank status at specific timestamp - READS FROM SNAPSHOT OR LOG.
+    Uses a default of 14 tanks to prevent zero-division errors if data hasn't loaded yet.
+    """
     tank_status = {}
     
-    # Read from snapshot_df
+    # Read from snapshot_df (Method 2)
     if snapshot_df is not None and not snapshot_df.empty and '_Timestamp' in snapshot_df.columns:
         matched_rows = snapshot_df[snapshot_df['_Timestamp'] <= timestamp]
         
@@ -275,7 +278,7 @@ def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=16):
         else:
             latest_snapshot = matched_rows.iloc[-1]
         
-        # Count volume columns first
+        # Count volume columns first (same logic as before)
         volume_count = 0
         for i in range(1, len(snapshot_df.columns)):
             if snapshot_df.columns[i] == '_Timestamp':
@@ -309,13 +312,33 @@ def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=16):
                     if value_str in valid_statuses:
                         tank_status[tank_id] = value_str
     
-    # Fill missing tanks
+    # Method 1 (Log Data) Fallback/Override for status (simpler and often more reliable)
+    if log_df is not None and not log_df.empty:
+        filtered = log_df[log_df['Timestamp'] <= timestamp].copy()
+        if not filtered.empty:
+            latest_row = filtered.iloc[-1]
+            tank_cols = [col for col in latest_row.index if col.startswith('Tank') and not col.endswith('_Volume')]
+            
+            for col in tank_cols:
+                tank_num_str = col[4:].replace('_Status', '')
+                if tank_num_str.isdigit():
+                    tank_id = int(tank_num_str)
+                    status = latest_row[col]
+                    if pd.notna(status) and isinstance(status, str):
+                        tank_status[tank_id] = status.strip().upper()
+    
+    # Fill missing tanks with default 'READY' status
     for i in range(1, num_tanks + 1):
         if i not in tank_status:
             tank_status[i] = 'READY'
     
-    return tank_status
-
+    # Ensure the second return value is set correctly
+    # If the function reached here, num_tanks is the highest detected count (or the default 14)
+    actual_num_tanks = max(max(tank_status.keys()) if tank_status else 0, num_tanks)
+    
+    # --- CRITICAL FIX: RETURN THE REQUIRED TUPLE ---
+    return tank_status, actual_num_tanks
+    
 def get_tank_volume(snapshot_df, timestamp, tank_id):
     """Get tank volume from snapshots - HANDLES HORIZONTAL FORMAT"""
     
