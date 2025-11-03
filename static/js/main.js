@@ -151,19 +151,19 @@ function resetCrudeMix() {
     // Add default rows back
     tableBody.innerHTML = `
         <tr class="crude-mix-row">
-            <td style="padding: 5px;"><input type="text" class="crude-name-input" value="Arab Light" placeholder="Enter crude name" style="width: 90%;" onchange="updateCrudeMix()"></td>
+            <td style="padding: 5px;"><input type="text" class="crude-name-input" value="Bonny Light" placeholder="Enter crude name" style="width: 90%;" onchange="updateCrudeMix()"></td>
             <td style="padding: 5px; text-align: center;"><input type="number" class="crude-percentage-input" value="50" min="0" max="100" step="0.1" style="width: 80px;" onchange="updateCrudeMix()"></td>
             <td style="padding: 5px; text-align: center;"><span class="crude-volume-display">20,000</span></td>
             <td style="padding: 5px; text-align: center;"><button class="remove-crude-btn" onclick="removeCrudeRow(this)" style="background-color: #dc3545; color: white; border: none; padding: 3px 8px; cursor: pointer;">✕</button></td>
         </tr>
         <tr class="crude-mix-row">
-            <td style="padding: 5px;"><input type="text" class="crude-name-input" value="Arab Heavy" placeholder="Enter crude name" style="width: 90%;" onchange="updateCrudeMix()"></td>
+            <td style="padding: 5px;"><input type="text" class="crude-name-input" value="Forcados" placeholder="Enter crude name" style="width: 90%;" onchange="updateCrudeMix()"></td>
             <td style="padding: 5px; text-align: center;"><input type="number" class="crude-percentage-input" value="30" min="0" max="100" step="0.1" style="width: 80px;" onchange="updateCrudeMix()"></td>
             <td style="padding: 5px; text-align: center;"><span class="crude-volume-display">15,000</span></td>
             <td style="padding: 5px; text-align: center;"><button class="remove-crude-btn" onclick="removeCrudeRow(this)" style="background-color: #dc3545; color: white; border: none; padding: 3px 8px; cursor: pointer;">✕</button></td>
         </tr>
         <tr class="crude-mix-row">
-            <td style="padding: 5px;"><input type="text" class="crude-name-input" value="Murban" placeholder="Enter crude name" style="width: 90%;" onchange="updateCrudeMix()"></td>
+            <td style="padding: 5px;"><input type="text" class="crude-name-input" value="Quaiboe" placeholder="Enter crude name" style="width: 90%;" onchange="updateCrudeMix()"></td>
             <td style="padding: 5px; text-align: center;"><input type="number" class="crude-percentage-input" value="10" min="0" max="100" step="0.1" style="width: 80px;" onchange="updateCrudeMix()"></td>
             <td style="padding: 5px; text-align: center;"><span class="crude-volume-display">15,000</span></td>
             <td style="padding: 5px; text-align: center;"><button class="remove-crude-btn" onclick="removeCrudeRow(this)" style="background-color: #dc3545; color: white; border: none; padding: 3px 8px; cursor: pointer;">✕</button></td>
