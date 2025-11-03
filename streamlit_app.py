@@ -348,15 +348,11 @@ def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=None):
 def get_tank_volume(snapshot_df, timestamp, tank_id):
     """Get tank volume from snapshots - HANDLES HORIZONTAL FORMAT"""
     
-    # If no snapshot data available, return 0
     if snapshot_df is None or snapshot_df.empty:
         return 0
     
-    # HORIZONTAL FORMAT: First column is timestamp, subsequent columns 1 to N are tank volumes
-    # Tank 1 volume is in column index 1, Tank 2 in column index 2, etc.
-    
+    # HORIZONTAL FORMAT: Column index = tank_id (after timestamp column at index 0)
     if '_Timestamp' in snapshot_df.columns:
-        # Filter to correct timestamp
         matched_rows = snapshot_df[snapshot_df['_Timestamp'] <= timestamp]
         
         if matched_rows.empty:
@@ -364,8 +360,7 @@ def get_tank_volume(snapshot_df, timestamp, tank_id):
         else:
             latest_snapshot = matched_rows.iloc[-1]
         
-        # Tank ID maps to column index
-        # Column 0 = Timestamp, Column 1 = Tank 1, Column 2 = Tank 2, etc.
+        # Tank ID maps to column index (Tank 1 = column 1, Tank 2 = column 2, etc.)
         if tank_id < len(snapshot_df.columns):
             col_name = snapshot_df.columns[tank_id]
             
@@ -374,23 +369,24 @@ def get_tank_volume(snapshot_df, timestamp, tank_id):
             
             value = latest_snapshot[col_name]
             
-            # Clean and convert value
             if pd.isna(value):
                 return 0
             
             vol_str = str(value).replace(',', '').replace(' ', '').strip()
             
-            # Skip if it's a status string (not a number)
-            status_keywords = ['FILLING', 'EMPTY', 'READY', 'FEEDING', 'SUSPENDED', 'SETTLED', 'LAB', 
-                             'FILLED', 'SETTLING', 'MAINTENANCE', 'CLEANING']
+            # Skip if it's a status string
+            status_keywords = ['FILLING', 'EMPTY', 'READY', 'FEEDING', 'SUSPENDED', 'SETTLED', 
+                             'LAB', 'FILLED', 'SETTLING', 'MAINTENANCE', 'CLEANING']
             if vol_str.upper() in status_keywords:
                 return 0
             
             try:
                 volume = float(vol_str)
-                return max(0, volume)  # Ensure non-negative
+                return max(0, volume)
             except:
                 return 0
+    
+    return 0
     
     # Fallback: Try vertical format (columns named Tank1, Tank2, etc.)
     possible_cols = [f'Tank{tank_id}', f'Tank{tank_id}_Volume', f'Tank {tank_id}', f'tank{tank_id}']
