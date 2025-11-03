@@ -88,7 +88,7 @@ def load_data():
     
     # --- THIS IS THE CRITICAL CHANGE ---
     # Use the local Flask app address and port (must match your app.py)
-    FLASK_APP_URL = "http://127.0.0.1:5000" 
+    
     
     st.info(f"Connecting to Flask server at {FLASK_APP_URL}...")
 
