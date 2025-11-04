@@ -132,7 +132,7 @@ class Simulator:
 
         # Filling control: only one tank can be filled at a time per cargo
         # {cargo_vessel_name: (tank_id, end_time, volume_to_fill)}
-        self.active_fills: Dict[str, Tuple[int, datetime, datetime, float]] = {}
+        self.active_fills: Dict[str, Tuple[int, datetime, float]] = {}
 
         # Cargo tracking with unique vessel names
         self.cargo_counter = {"VLCC": 0, "SUEZ": 0, "AFRA": 0, "PANA": 0, "HANDY": 0}
@@ -478,7 +478,7 @@ class Simulator:
         """Complete fills that have reached end time"""
         finished_cargos = []
         
-        for vessel_name, (tid, start_time, end_time, volume_to_fill) in list(self.active_fills.items()):
+        for vessel_name, (tid, end_time, volume_to_fill) in list(self.active_fills.items()):
             if now >= end_time:
                 # CRITICAL FIX: ADD to existing volume, don't replace it
                 current_volume = self.bbl.get(tid, 0.0)
@@ -714,7 +714,7 @@ class Simulator:
 
                             actual_fill_hours = volume_to_fill / max(self.discharge_rate, 1e-6)
                             end_time = now + timedelta(hours=actual_fill_hours)
-                            self.active_fills[cargo["vessel_name"]] = (tid, now, end_time, volume_to_fill) # Add 'now' as start_time
+                            self.active_fills[cargo["vessel_name"]] = (tid, end_time, volume_to_fill)
 
                             a["filled"] = filled_so_far + volume_to_fill
 
@@ -789,7 +789,7 @@ class Simulator:
 
                 actual_fill_hours = volume_to_fill / max(self.discharge_rate, 1e-6)
                 end_time = now + timedelta(hours=actual_fill_hours)
-                self.active_fills[cargo["vessel_name"]] = (tid, now, end_time, volume_to_fill) # Add 'now' as start_time
+                self.active_fills[cargo["vessel_name"]] = (tid, end_time, volume_to_fill)
 
                 event_name = "FILL_START"
                 if tid not in self.tank_filled_first:
@@ -1079,42 +1079,11 @@ class Simulator:
         if not hasattr(self, 'snapshot_log'):
             self.snapshot_log = []
         
-        # --- START FIX: Create lookup for actively filling tanks ---
-        # {tank_id: (start_time, end_time, volume_to_fill_total)}
-        filling_tanks = {
-            t_data[0]: (t_data[1], t_data[2], t_data[3]) 
-            for v_name, t_data in self.active_fills.items()
-        }
-        # --- END FIX ---
-
         snapshot = {
-            'Timestamp': now.strftime("%d/%m/%Y %H:%M"), # <<< CORRECTED TIMESTAMP FORMAT
+            'Timestamp': now.strftime("%d/%m/%Y %H:%M"),
         }
         for i in range(1, self.N + 1):
-            
-            # --- START FIX: Interpolate volume for FILLING tanks ---
-            if self.state[i] == FILLING and i in filling_tanks:
-                start_time, end_time, total_volume_to_add = filling_tanks[i]
-                # self.bbl[i] is the volume *before* this fill started (e.g., 0 or partial)
-                base_volume = self.bbl[i] 
-                
-                total_duration_sec = (end_time - start_time).total_seconds()
-                elapsed_sec = (now - start_time).total_seconds()
-                
-                volume_added_so_far = 0.0
-                if total_duration_sec > 0 and elapsed_sec > 0:
-                    # Calculate fill percentage, cap at 100% (min(1.0, ...))
-                    fill_percent = min(1.0, elapsed_sec / total_duration_sec)
-                    volume_added_so_far = total_volume_to_add * fill_percent
-                    
-                current_interpolated_volume = base_volume + volume_added_so_far
-                snapshot[f'Tank{i}'] = f"{current_interpolated_volume:,.0f}"
-            
-            else:
-                # --- Original logic ---
-                snapshot[f'Tank{i}'] = f"{self.bbl[i]:,.0f}"
-            # --- END FIX ---
-            
+            snapshot[f'Tank{i}'] = f"{self.bbl[i]:,.0f}"
             snapshot[f'State{i}'] = self.state[i]
         
         self.snapshot_log.append(snapshot)
