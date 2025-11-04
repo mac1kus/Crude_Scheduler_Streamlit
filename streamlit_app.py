@@ -612,24 +612,38 @@ def main():
         selected_date = datetime.strptime(selected_date_str, '%d/%m/%Y').date()
     
     with col2:
-        # Generate all time options in 1-minute intervals for 24 hours
-        time_options = []
-        for hour in range(24):
-            for minute in range(60):
-                time_options.append(f"{hour:02d}:{minute:02d}")
-        
-        # Time dropdown
-        selected_time_str = st.selectbox(
-            "🕐 Select Time",
-            options=time_options,
-            index=0,
+        # Time input as a text box
+        selected_time_str = st.text_input(
+            "🕐 Select Time (HH MM)",
+            value="00 00",  # Default to 00:00
             key='time_selector',
-            help="Select the time (1-minute intervals)"
+            help="Type the time in 24-hour HH MM format (e.g., 14 30)"
         )
+
+        # Parse the HH MM string
+        try:
+            # Replace common separators with a space, then split
+            parts = selected_time_str.replace(':', ' ').replace('-', ' ').split()
+            if len(parts) == 2:
+                hour = int(parts[0])
+                minute = int(parts[1])
+                # This will raise ValueError if hour > 23 or minute > 59
+                selected_time_obj = datetime.strptime(f"{hour}:{minute}", "%H:%M").time()
+            else:
+                # Handle single number input, e.g., "10" -> 10:00
+                if len(parts) == 1 and parts[0].isdigit():
+                     hour = int(parts[0])
+                     selected_time_obj = datetime.strptime(f"{hour}:00", "%H:00").time()
+                else:
+                    raise ValueError("Invalid format")
+        except Exception:
+            # If parsing fails, default to 00:00 and warn the user
+            st.warning(f"Invalid time: '{selected_time_str}'. Defaulting to 00:00.")
+            selected_time_obj = datetime.strptime("00:00", "%H:%M").time()
         
         # Combine date and time
-        selected_time = datetime.combine(selected_date, datetime.strptime(selected_time_str, '%H:%M').time())
-    
+        selected_time = datetime.combine(selected_date, selected_time_obj)
+
     # Convert to datetime if it's a pandas Timestamp
     if isinstance(selected_time, pd.Timestamp):
         selected_time = selected_time.to_pydatetime()
@@ -881,23 +895,36 @@ def main():
                     selected_inv_date = datetime.strptime(selected_inv_date_str, '%d/%m/%Y').date()
                 
                 with col2:
-                    # Generate all time options in 1-minute intervals for 24 hours
-                    time_options = []
-                    for hour in range(24):
-                        for minute in range(60):
-                            time_options.append(f"{hour:02d}:{minute:02d}")
-                    
-                    # Time dropdown
-                    selected_inv_time_str = st.selectbox(
-                        "🕐 Select Time",
-                        options=time_options,
-                        index=len(time_options)-1,  # Default to 23:59
+                    # Time input as a text box
+                    selected_inv_time_str = st.text_input(
+                        "🕐 Select Time (HH MM)",
+                        value="23 59",  # Default to 23:59
                         key='inv_time_selector',
-                        help="Select the time (1-minute intervals)"
+                        help="Type the time in 24-hour HH MM format (e.g., 14 30)"
                     )
+
+                    # Parse the HH MM string
+                    try:
+                        # Replace common separators with a space, then split
+                        parts = selected_inv_time_str.replace(':', ' ').replace('-', ' ').split()
+                        if len(parts) == 2:
+                            hour = int(parts[0])
+                            minute = int(parts[1])
+                            # This will raise ValueError if hour > 23 or minute > 59
+                            selected_time_obj = datetime.strptime(f"{hour}:{minute}", "%H:%M").time()
+                        else:
+                            if len(parts) == 1 and parts[0].isdigit():
+                                 hour = int(parts[0])
+                                 selected_time_obj = datetime.strptime(f"{hour}:00", "%H:00").time()
+                            else:
+                                raise ValueError("Invalid format")
+                    except Exception:
+                        # If parsing fails, default to 23:59 and warn the user
+                        st.warning(f"Invalid time: '{selected_inv_time_str}'. Defaulting to 23:59.")
+                        selected_time_obj = datetime.strptime("23:59", "%H:%M").time()
                     
                     # Combine date and time
-                    selected_inv_datetime = datetime.combine(selected_inv_date, datetime.strptime(selected_inv_time_str, '%H:%M').time())
+                    selected_inv_datetime = datetime.combine(selected_inv_date, selected_time_obj)
                 
                 # Calculate certified stock for ALL snapshots (for the graph)
                 timestamps = []

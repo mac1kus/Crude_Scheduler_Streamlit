@@ -742,6 +742,7 @@ class Simulator:
                             
                             # Change state at now
                             self._change_state(tid, FILLING, now)
+                            self._log_tank_snapshot(now)
                             self._log_event(now, "Info", event_name, tid, vessel_name, message)
                             
                             self.filling_events_log.append({
@@ -798,6 +799,7 @@ class Simulator:
 
                 # Change state at now
                 self._change_state(tid, FILLING, now)
+                self._log_tank_snapshot(now)
                 self._log_event(
                     now,
                     "Info", event_name, tid, cargo["vessel_name"],
@@ -1082,10 +1084,59 @@ class Simulator:
         snapshot = {
             'Timestamp': now.strftime("%d/%m/%Y %H:%M"),
         }
-        for i in range(1, self.N + 1):
-            snapshot[f'Tank{i}'] = f"{self.bbl[i]:,.0f}"
-            snapshot[f'State{i}'] = self.state[i]
         
+        # --- START DYNAMIC VOLUME FIX ---
+        for i in range(1, self.N + 1):
+            state = self.state[i]
+            # Get the volume as it was *before* the current fill/feed action
+            base_volume = self.bbl[i] 
+            current_usable_volume = base_volume
+            
+            if state == FILLING:
+                # This tank is actively filling. We need to calculate its *current* volume.
+                # Find the active fill data for this tank
+                active_fill_data = next((data for data in self.active_fills.values() if data[0] == i), None)
+                
+                if active_fill_data:
+                    # data = (tank_id, end_time, volume_to_fill_this_action)
+                    _tid, end_time, total_volume_for_this_fill = active_fill_data
+                    
+                    # Back-calculate the fill duration and start time
+                    fill_duration_hours = total_volume_for_this_fill / max(self.discharge_rate, 1e-6)
+                    
+                    # Check if discharge rate is valid
+                    if fill_duration_hours > 0:
+                        start_time = end_time - timedelta(hours=fill_duration_hours)
+                        
+                        # Calculate how much has been filled *in this specific fill action* so far
+                        if now >= start_time:
+                            elapsed_hours = (now - start_time).total_seconds() / 3600.0
+                            volume_filled_so_far = elapsed_hours * self.discharge_rate
+                            
+                            # Don't report more than the total planned for this fill action
+                            volume_filled_so_far = min(volume_filled_so_far, total_volume_for_this_fill)
+                            
+                            # The current volume is the base volume (from previous fills) + what's been added in *this* fill
+                            current_usable_volume = base_volume + volume_filled_so_far
+            
+            # For all other states (READY, FEEDING, SETTLING, etc.), 
+            # self.bbl[i] is correct at the time of the snapshot.
+            
+            # Store the calculated volume and the current state
+            snapshot[f'Tank{i}'] = f"{current_usable_volume:,.0f}"
+            snapshot[f'State{i}'] = state
+        # --- END DYNAMIC VOLUME FIX ---
+        
+        # --- START DUPLICATE REMOVAL FIX ---
+        # Only add snapshot if it's a new timestamp OR if it's an event-driven snapshot
+        # (This logic is now simplified: just add it, and we will clean it up *after* the run)
+        
+        # Check for and remove the last snapshot if it has the *exact* same timestamp
+        if (self.snapshot_log and 
+            self.snapshot_log[-1]['Timestamp'] == snapshot['Timestamp']):
+            # This is an event snapshot overwriting a periodic snapshot at the same minute
+            self.snapshot_log.pop() 
+            
         self.snapshot_log.append(snapshot)
     
     def simulate_day(self, day_index: int):
