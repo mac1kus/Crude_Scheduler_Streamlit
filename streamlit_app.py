@@ -339,66 +339,52 @@ def get_tank_status(log_df, snapshot_df, timestamp, num_tanks=None):
     return tank_status, actual_num_tanks
 
 def get_tank_volume(snapshot_df, timestamp, tank_id):
-    """Get tank volume from snapshots - HANDLES HORIZONTAL FORMAT"""
+    """
+    Get tank volume from snapshots - CORRECTED for data format:
+    [Timestamp, Tank1, State1, Tank2, State2, ...]
+    """
     
-    # If no snapshot data available, return 0
-    if snapshot_df is None or snapshot_df.empty:
+    # If no snapshot data, or timestamp column is missing, return 0
+    if snapshot_df is None or snapshot_df.empty or '_Timestamp' not in snapshot_df.columns:
         return 0
     
-    # HORIZONTAL FORMAT: First column is timestamp, subsequent columns 1 to N are tank volumes
-    # Tank 1 volume is in column index 1, Tank 2 in column index 2, etc.
+    # --- START CORRECTED LOGIC ---
+
+    # 1. Find the latest snapshot row based on the selected timestamp
+    matched_rows = snapshot_df[snapshot_df['_Timestamp'] <= timestamp]
     
-    if '_Timestamp' in snapshot_df.columns:
-        # Filter to correct timestamp
-        matched_rows = snapshot_df[snapshot_df['_Timestamp'] <= timestamp]
+    if matched_rows.empty:
+        # If no row is at or before the timestamp, use the very first row
+        latest_snapshot = snapshot_df.iloc[0]
+    else:
+        # Otherwise, use the last row that matches (the most recent one)
+        latest_snapshot = matched_rows.iloc[-1]
+    
+    # 2. Define the *exact* column name to find, based on your file's format
+    # (e.g., for tank_id 5, this will be "Tank5")
+    tank_col_name = f'Tank{tank_id}'
+    
+    # 3. Check if this column exists in the snapshot data
+    if tank_col_name in latest_snapshot.index:
+        # Get the value from that specific column
+        value = latest_snapshot[tank_col_name]
         
-        if matched_rows.empty:
-            latest_snapshot = snapshot_df.iloc[0]
-        else:
-            latest_snapshot = matched_rows.iloc[-1]
+        if pd.isna(value):
+            return 0
         
-        # Tank ID maps to column index
-        # Column 0 = Timestamp, Column 1 = Tank 1, Column 2 = Tank 2, etc.
-        if tank_id < len(snapshot_df.columns):
-            col_name = snapshot_df.columns[tank_id]
-            
-            if col_name == '_Timestamp':
-                return 0
-            
-            value = latest_snapshot[col_name]
-            
-            # Clean and convert value
-            if pd.isna(value):
-                return 0
-            
-            vol_str = str(value).replace(',', '').replace(' ', '').strip()
-            
-            # Skip if it's a status string (not a number)
-            status_keywords = ['FILLING', 'EMPTY', 'READY', 'FEEDING', 'SUSPENDED', 'SETTLED', 'LAB', 
-                             'FILLED', 'SETTLING', 'MAINTENANCE', 'CLEANING']
-            if vol_str.upper() in status_keywords:
-                return 0
-            
-            try:
-                volume = float(vol_str)
-                return max(0, volume)  # Ensure non-negative
-            except:
-                return 0
+        # Clean the value (remove commas) and convert to float
+        vol_str = str(value).replace(',', '').replace(' ', '').strip()
+        
+        try:
+            volume = float(vol_str)
+            return max(0, volume)  # Return the volume
+        except ValueError:
+            # The value was not a number (e.g., it might have been a status string)
+            return 0
     
-    # Fallback: Try vertical format (columns named Tank1, Tank2, etc.)
-    possible_cols = [f'Tank{tank_id}', f'Tank{tank_id}_Volume', f'Tank {tank_id}', f'tank{tank_id}']
-    latest_snapshot = snapshot_df.iloc[-1]
-    
-    for col in possible_cols:
-        if col in latest_snapshot.index:
-            vol_str = str(latest_snapshot[col]).replace(',', '').replace(' ', '')
-            try:
-                volume = float(vol_str)
-                return max(0, volume)
-            except:
-                continue
-    
+    # 4. If the column (e.g., "Tank5") was not found, return 0
     return 0
+    # --- END CORRECTED LOGIC ---
 
 def get_crude_mix(crude_mix_dict):
     """Get crude mix from HTML input data"""
