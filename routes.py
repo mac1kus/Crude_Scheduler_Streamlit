@@ -1790,8 +1790,8 @@ def register_routes(app):
         STREAMLIT_FILES_TO_KEEP = [
             "simulation_log.csv", 
             "cargo_report.csv", 
-            "tank_snapshots.csv",  # ← This is the file having issues
-            "daily_summary.csv"    # ← Added for safety
+            "tank_snapshots.csv",  
+            "daily_summary.csv"    
         ]
         
         try:
@@ -1802,17 +1802,11 @@ def register_routes(app):
 
             file_path = os.path.join(directory_path, filename)
             
-            # Debug logging
-            print(f"[DEBUG] Download request for: {filename}")
-            print(f"[DEBUG] Full path: {file_path}")
-            print(f"[DEBUG] File exists: {os.path.exists(file_path)}")
-            
             if os.path.exists(file_path):
                 # Check file size and modification time
                 file_size = os.path.getsize(file_path)
                 file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
-                print(f"[DEBUG] File size: {file_size} bytes")
-                print(f"[DEBUG] Last modified: {file_mtime}")
+                
 
             if not os.path.exists(file_path):
                 print(f"[ERROR] File not found: {file_path}")
