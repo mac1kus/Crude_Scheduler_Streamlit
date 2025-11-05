@@ -1490,16 +1490,17 @@ class Simulator:
     def save_csvs(self, log_path="simulation_log.csv", 
                   summary_path="daily_summary.csv",
                   cargo_path="cargo_report.csv",
-                  inventory_path="inventory_data.csv"):
+                  inventory_path="inventory_data.csv",
+                  output_folder: str = "/tmp"):  # <-- CHANGE 1: ADD output_folder ARGUMENT
         
         # --- START MODIFIED BLOCK (A): FIXED PATH SETUP ---
         # 1. Define fixed output directory relative to the project root
-        output_folder = "/tmp"
+        #output_folder = "/tmp"
         os.makedirs(output_folder, exist_ok=True) # Ensure the directory exists
         
         # 2. Define fixed file paths (no timestamp)
         log_path = os.path.join(output_folder, "simulation_log.csv")
-        summary_path = os.path.join(output_folder, "daily_summary.csv")
+        summary_path = os.path.join(output_folder, "daily_summary.csv") 
         cargo_path = os.path.join(output_folder, "cargo_report.csv")
         inventory_path = os.path.join(output_folder, "inventory_data.csv")
         snapshot_path = os.path.join(output_folder, "tank_snapshots.csv")
@@ -1555,8 +1556,6 @@ class Simulator:
                 writer = csv.DictWriter(f, fieldnames=list(self.cargo_report_rows[0].keys()))
                 writer.writeheader()
                 writer.writerows(self.cargo_report_rows)
-        
-
 
         # NOTE: The subsequent _convert_to_excel_with_autofit method will also use these fixed paths.
         
@@ -1566,9 +1565,6 @@ class Simulator:
 #             writer.writerow(["Date", "Certified Stock (MMbbl)"])
 #             for dt, inv in self.inventory_data:
 #                 writer.writerow([dt.strftime("%d/%m/%Y"), f"{inv:.3f}"])
-#         
-
-        
        
     def _convert_to_excel_with_autofit(self, log_path, summary_path, cargo_path, inventory_path, snapshot_path):
         """Convert CSV to Excel with auto-fit columns"""
@@ -1637,6 +1633,18 @@ if __name__ == "__main__":
     cfg = prompt_inputs()
     sim = Simulator(cfg)
     sim.run()
-    sim.save_csvs()
+
+
+    # --- START NEW BLOCK: Your Subfolder Logic ---
+    import uuid, os
+    session_id = str(uuid.uuid4())
+    output_folder = f"/tmp/{session_id}"
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"[DEBUG] Output folder created: {output_folder}")
+    # --- END NEW BLOCK ---
+
+    # --- CHANGE 2: Pass the folder name ---
+    sim.save_csvs(output_folder=output_folder)
+    #sim.save_csvs()
     
     print("Done! Check output files for detailed results.")
