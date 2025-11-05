@@ -255,20 +255,22 @@ function removeOneTank() {
 
 function addNewTankBox(tankNumber) {
     const tankGrid = document.getElementById('tankGrid');
+    // Get the current default values from the UI
     const tankCapacity = document.getElementById('tankCapacity').value;
-    
+    const defaultDeadBottom = document.getElementById('defaultDeadBottom').value;
+
     const tankBox = document.createElement('div');
     tankBox.className = 'tank-box';
     tankBox.innerHTML = `
         <h4>Tank ${tankNumber}</h4>
         <div class="tank-input-row">
             <label>Current Level:</label>
-            <input type="number" id="tank${tankNumber}Level" value="0" min="0" max="${tankCapacity}" onchange="autoSaveInputs()">
+            <input type="number" id="tank${tankNumber}Level" value="${tankCapacity}" min="0" max="${tankCapacity}" onchange="autoSaveInputs()">
             <span>bbl</span>
         </div>
         <div class="tank-input-row">
             <label>Dead Bottom:</label>
-            <input type="number" id="deadBottom${tankNumber}" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+            <input type="number" id="deadBottom${tankNumber}" value="${defaultDeadBottom}" min="10000" max="10500" onchange="autoSaveInputs()">
             <span>bbl</span>
         </div>
     `;
